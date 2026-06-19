@@ -33,11 +33,11 @@
 
 # High-Level Design (HLD): Requirements Quality & Traceability Validator
 
-This section provides the high-level software architecture, module design, and workflow flowcharts for the **INCOSE / ASPICE Automated Audit Tool** (also known as the *NVIDIA Mission Critical Assistant*).
+This section provides the high-level software architecture, module design, and workflow flowcharts for the **INCOSE / ASPICE Automated Audit Tool** (also known as the *Gemini Mission Critical Assistant*).
 
 ## 1. System Overview
 
-The RequirementValidator is an automated systems engineering assistant built on top of Streamlit and powered by NVIDIA NIM microservices. The tool helps engineering teams ensure that their requirements documents comply with industry standards (such as **INCOSE guidelines**, **EARS syntax**, **ASPICE V-cycle**, and **ISO 26262 safety standards**). It does so by performing quality checks, executing automated corrections, checking bidirectional traceability across levels of the V-cycle, and retrieving rules dynamically using a Retrieval-Augmented Generation (RAG) vector engine.
+The RequirementValidator is an automated systems engineering assistant built on top of Streamlit and powered by Google Gemini API. The tool helps engineering teams ensure that their requirements documents comply with industry standards (such as **INCOSE guidelines**, **EARS syntax**, **ASPICE V-cycle**, and **ISO 26262 safety standards**). It does so by performing quality checks, executing automated corrections, checking bidirectional traceability across levels of the V-cycle, and retrieving rules dynamically using a Retrieval-Augmented Generation (RAG) vector engine.
 
 ![System Overview Architecture Flowchart](artefacts/system_overview_flowchart.png)
 
@@ -72,7 +72,7 @@ Executes technical checks, validations, and rewrites.
 ### 2.4. Data & Core AI Layer
 Defines entity models and provides foundational interfaces to the model serving APIs.
 *   **[requirement.py](file:///c:/BK/06_GenAI/RequirementValidator/Model/requirement.py)**: Defines the standard `Requirement` model object. Employs dynamic CSV header detection (e.g. mapping "requirement", "description", or "text" to `content`) to ensure compatibility with standard industry engineering exports (e.g., IBM DOORS, PTC Windchill, Jama).
-*   **[llm.py](file:///c:/BK/06_GenAI/RequirementValidator/Model/llm.py)**: Integrates with the OpenAI-compatible NVIDIA API. Standardizes model defaults (`nvidia/llama-3.3-nemotron-super-49b-v1.5` and `nvidia/nv-embedqa-e5-v5` embeddings). Incorporates API failure fault-tolerance via a thread-safe backoff retry mechanism.
+*   **[llm.py](file:///c:/BK/06_GenAI/RequirementValidator/Model/llm.py)**: Integrates with Google's Gemini API via OpenAI-compatible endpoints. Standardizes model defaults (`gemini-1.5-flash` and `gemini-embedding-001` embeddings). Incorporates API failure fault-tolerance via a thread-safe backoff retry mechanism.
 *   **[rag_engine.py](file:///c:/BK/06_GenAI/RequirementValidator/RagEngine/rag_engine.py)**: Drives standard vector collection configuration, payload indexing, batch vectorization, and cosine similarity lookup. Automatically orchestrates a dual-backend system: using a remote **Qdrant DB instance** if env credentials exist, and falling back to a **local pickled NumPy database** (`vector_store.pkl`) otherwise.
 
 ---
@@ -127,9 +127,9 @@ Inside [rag_engine.py](file:///c:/BK/06_GenAI/RequirementValidator/RagEngine/rag
 | Technology Component | Specific Integration / Version | Purpose |
 | :--- | :--- | :--- |
 | **Frontend Framework** | Streamlit | Rapid interactive web dashboard |
-| **LLM Provider** | NVIDIA NIM API (OpenAI SDK Wrapper) | Core AI reasoning, chunk extraction, and rewriting |
-| **Text Generator Model** | `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Requirements auditing and correction reviews |
-| **Embedding Model** | `nvidia/nv-embedqa-e5-v5` (1024-dim) | Semantic retrieval vector builder |
+| **LLM Provider** | Google Gemini API (OpenAI SDK Wrapper) | Core AI reasoning, chunk extraction, and rewriting |
+| **Text Generator Model** | `gemini-1.5-flash` | Requirements auditing and correction reviews |
+| **Embedding Model** | `gemini-embedding-001` (3072-dim) | Semantic retrieval vector builder |
 | **Vector Index Server** | Qdrant Client / Local Pickle NumPy fallback | Vector storage, keyword indexing, and cosine search |
 | **Document Parser** | PyMuPDF (`fitz`) | High-speed PDF text parsing |
 | **Concurrency Pool** | Python `ThreadPoolExecutor` | Parallel network calls (speeding up evaluations) |

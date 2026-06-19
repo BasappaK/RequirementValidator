@@ -25,7 +25,7 @@ class RAGEngine:
         self.db_path = db_path
         self.documents = []  # List of dicts: {"id", "title", "text", "source", "collection", "metadata"}
         self.vectors = []    # List of embedding lists
-        self.embed_dim = 1024  # Size matches nvidia/nv-embedqa-e5-v5 dimension
+        self.embed_dim = 3072  # Size matches gemini-embedding-001 dimension
 
         # Initialize Qdrant Client if variables are set
         qdrant_url = os.environ.get("QDRANT_URL", "").strip()
@@ -464,12 +464,20 @@ class RAGEngine:
                                 "payload": point.payload,
                                 "collection": col
                             })
-                    except Exception:
+                    except Exception as e:
+                        err_msg = str(e)
+                        if "dimension" in err_msg.lower() or "validation" in err_msg.lower():
+                            raise ValueError(
+                                f"Qdrant dimension mismatch for collection '{col}': {e}. "
+                                "Please clear/recreate the collection and re-ingest your documents."
+                            ) from e
                         pass
                 
                 all_points.sort(key=lambda x: x["score"], reverse=True)
                 return all_points[:top_k]
             except Exception as e:
+                if isinstance(e, ValueError):
+                    raise e
                 print(f"[RAGEngine] Qdrant search failed: {e}. Falling back to local search.", flush=True)
 
         # Local fallback
@@ -478,6 +486,13 @@ class RAGEngine:
 
         query_vector = np.array(self._safe_get_embedding(search_text))
         matrix = np.array(self.vectors)
+
+        if len(matrix) > 0 and matrix.shape[1] != query_vector.shape[0]:
+            raise ValueError(
+                f"Embedding dimension mismatch: The query embedding has dimension {query_vector.shape[0]}, "
+                f"but the loaded local database has dimension {matrix.shape[1]}. "
+                "Please clear the database and re-train/re-ingest your documents."
+            )
 
         matrix_norms = np.linalg.norm(matrix, axis=1)
         query_norm = np.linalg.norm(query_vector)

@@ -9,24 +9,24 @@ env_path = Path(".env") if Path(".env").exists() else Path("api_key.env")
 load_dotenv(env_path)
 
 class LLMManager:
-    def __init__(self, model_name="nvidia/llama-3.3-nemotron-super-49b-v1.5"):
+    def __init__(self, model_name="gemini-2.5-flash"):
         # Check Streamlit secrets first, fallback to environment variable
         api_key = None
         try:
             import streamlit as st
-            api_key = st.secrets["API_KEY"]
+            api_key = st.secrets.get("GEMINI_API_KEY") or st.secrets.get("API_KEY")
         except Exception:
             pass
         
         if not api_key:
-            api_key = os.getenv("NVIDIA_API_KEY")
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("NVIDIA_API_KEY")
             
         self.client = OpenAI(
-            base_url="https://integrate.api.nvidia.com/v1",
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             api_key=api_key
         )
         self.model_name = model_name
-        self.embedding_model = "nvidia/nv-embedqa-e5-v5"
+        self.embedding_model = "gemini-embedding-001"
         self.retries = 3
 
     def _retry_api_call(self, api_func, *args, **kwargs):
@@ -58,7 +58,6 @@ class LLMManager:
                 messages=trimmed_messages,
                 temperature=0.0,
                 top_p=0.01,
-                seed=42,
                 max_tokens=8192,
                 stream=stream
             )
@@ -73,13 +72,12 @@ class LLMManager:
         return self._retry_api_call(call_and_validate)
 
     def get_embedding(self, text: str):
-        """Generates contextual float embeddings using the NVIDIA NIM footprint"""
+        """Generates contextual float embeddings using Google Gemini API"""
         response = self._retry_api_call(
             self.client.embeddings.create,
             input=[text],
             model=self.embedding_model,
-            encoding_format="float",
-            extra_body={"input_type": "query", "truncate": "NONE"}
+            encoding_format="float"
         )
         return response.data[0].embedding
 
@@ -91,8 +89,7 @@ class LLMManager:
             self.client.embeddings.create,
             input=texts,
             model=self.embedding_model,
-            encoding_format="float",
-            extra_body={"input_type": "passage", "truncate": "NONE"}
+            encoding_format="float"
         )
         # Ensure correct ordering by sorting on the index property
         sorted_data = sorted(response.data, key=lambda x: x.index)
