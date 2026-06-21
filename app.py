@@ -94,9 +94,17 @@ with st.sidebar:
         st.session_state.llm.retries = llm_retry_limit
     
     st.markdown("---")
+    st.subheader("⚡ Processing Mode")
+    st.session_state.batch_mode_enabled = st.toggle("Batch Processing", value=False)
+    if st.session_state.batch_mode_enabled:
+        st.session_state.batch_size = st.number_input("Batch Size", min_value=1, value=10, step=1)
+    else:
+        st.session_state.batch_size = 5
+
+    st.markdown("---")
     st.subheader("🤖 Active LLM Model")
     st.info(f"**Model:**\n`{st.session_state.llm.model_name}`")
-    st.caption("Powered by Google Gemini engine.")
+    st.caption("Powered by NVIDIA NIM Core engine.")
 
     st.markdown("---")
     st.subheader("📚 Collections & Documents")
@@ -120,10 +128,11 @@ with st.sidebar:
         st.info("No collections found.")
 
 # Application Layout Tabs
-tab_rag, tab_analysis, tab_chat = st.tabs([
+tab_rag, tab_analysis, tab_chat, tab_sandbox = st.tabs([
     "📂 RAG Knowledge Engine", 
     "📈 Requirements Quality Analyst", 
-    "💬 Gemini Core Chat"
+    "💬 Nemotron Core Chat",
+    "🧪 Prompt Sandbox"
 ])
 
 with tab_rag:
@@ -134,3 +143,28 @@ with tab_analysis:
 
 with tab_chat:
     render_chat_tab()
+
+with tab_sandbox:
+    st.header("🧪 Prompt Sandbox")
+    st.markdown("Test custom system prompts for the LLM without modifying the codebase. You can configure separate overrides for different execution paths.")
+    
+    modes = [
+        ("Analysis", "analysis"),
+        ("Process", "process"),
+        ("Batch Analysis", "batch_analysis"),
+        ("Batch Process", "batch_process")
+    ]
+    
+    for display_name, mode_key in modes:
+        with st.expander(f"🛠️ {display_name} Prompt Override", expanded=False):
+            use_custom = st.checkbox(f"Use Custom Prompt for {display_name}", key=f"use_custom_prompt_{mode_key}")
+            if use_custom:
+                st.warning(f"⚠️ Using Custom Prompt Override for {display_name}.")
+                
+            st.text_area(
+                "Custom System Prompt",
+                height=250,
+                key=f"custom_prompt_{mode_key}",
+                help=f"Enter the custom system prompt for {display_name}. The model will use this instead of the default prompts when the checkbox is enabled.",
+                disabled=not use_custom
+            )
