@@ -7,7 +7,7 @@ from UI.rag_tab import render_rag_tab
 from UI.analysis_tab import render_analysis_tab
 from UI.chat_tab import render_chat_tab
 
-st.set_page_config(page_title="Gemini Mission Critical Assistant", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="NVIDIA Mission Critical Assistant", layout="wide", initial_sidebar_state="collapsed")
 
 # Initialization Management
 if "llm" not in st.session_state:
@@ -96,7 +96,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🤖 Active LLM Model")
     st.info(f"**Model:**\n`{st.session_state.llm.model_name}`")
-    st.caption("Powered by Google Gemini API.")
+    st.caption("Powered by NVIDIA NIM Core engine.")
 
     st.markdown("---")
     st.subheader("📚 Collections & Documents")
@@ -123,7 +123,7 @@ with st.sidebar:
 tab_rag, tab_analysis, tab_chat = st.tabs([
     "📂 RAG Knowledge Engine", 
     "📈 Requirements Quality Analyst", 
-    "💬 Gemini Core Chat"
+    "💬 Nemotron Core Chat"
 ])
 
 with tab_rag:

@@ -79,7 +79,7 @@ class RAGEngine:
                     raise e
         raise Exception("Max retries exceeded for batch embeddings.")
 
-    def _split_oversized_chunk(self, chunk: dict, max_chars: int = 1200) -> list[dict]:
+    def _split_oversized_chunk(self, chunk: dict, max_chars: int = 1800) -> list[dict]:
         """Splits a single chunk into multiple smaller chunks if it exceeds max_chars."""
         text = chunk.get("text", "")
         if len(text) <= max_chars:
@@ -197,25 +197,70 @@ class RAGEngine:
                 self.vectors = [self.vectors[i] for i in indices_to_keep]
                 self._save_local_db()
 
-    def clear_database(self):
-        """Clear database. Resets local storage and deletes files."""
-        self.documents = []
-        self.vectors = []
-        if os.path.exists(self.db_path):
+    def clear_database(self, name: str):
+        """Delete a collection from Qdrant."""
+        if self.qdrant_client:
             try:
-                os.remove(self.db_path)
-            except Exception:
-                pass
-        
-        # If Qdrant is connected, we don't drop all remote collections automatically 
-        # to prevent data loss, but we reset reference state.
-        print("[RAGEngine] Local database cleared.", flush=True)
+                self.qdrant_client.delete_collection(collection_name=name)
+                print(f"[RAGEngine] Deleted collection {name} from Qdrant.", flush=True)
+            except Exception as e:
+                print(f"[RAGEngine] Failed to delete collection {name} from Qdrant: {e}", flush=True)
 
     def process_file(self, file_name, file_content, collection_name=None):
         """Decode and load file content blocks into memory for training."""
         if not collection_name:
             raise ValueError("collection_name is required when processing a file.")
 
+        # 1. Handle Excel files directly from bytes
+        if file_name.lower().endswith(('.xlsx', '.xls')):
+            import io
+            try:
+                import pandas as pd
+            except ImportError:
+                raise ImportError("Missing dependencies for Excel. Please run: pip install pandas openpyxl")
+            
+            try:
+                # Read the binary content into a pandas DataFrame
+                df = pd.read_excel(io.BytesIO(file_content))
+                df = df.fillna("")  # Replace NaNs with empty strings
+                
+                # --- THE FIX: BATCH ROWS INTO MARKDOWN TABLES ---
+                chunk_size = 15 # Group 15 rows into a single context chunk
+                
+                for i in range(0, len(df), chunk_size):
+                    chunk_df = df.iloc[i:i+chunk_size]
+                    
+                    # Manually construct a Markdown table (no extra dependencies needed)
+                    headers = "| " + " | ".join(str(col) for col in chunk_df.columns) + " |"
+                    separator = "| " + " | ".join(["---"] * len(chunk_df.columns)) + " |"
+                    
+                    md_rows = []
+                    for _, row in chunk_df.iterrows():
+                        md_rows.append("| " + " | ".join(str(v) for v in row.values) + " |")
+                        
+                    markdown_table = "\n".join([headers, separator] + md_rows)
+                    
+                    # Add descriptive context to the top of the chunk
+                    text_content = f"Document: {file_name}\nData Range: Rows {i+1} to {i+len(chunk_df)}\n\n{markdown_table}"
+                    
+                    self.documents.append({
+                        "id": str(uuid.uuid4()),
+                        "title": f"{file_name} (Rows {i+1}-{i+len(chunk_df)})",
+                        "text": text_content,
+                        "source": file_name,
+                        "collection": collection_name,
+                        "metadata": {
+                            "item_type": "table_batch", 
+                            "start_row": i+1, 
+                            "end_row": i+len(chunk_df)
+                        }
+                    })
+                return 
+            except Exception as e:
+                print(f"[RAGEngine] Failed to process Excel file {file_name}: {e}", flush=True)
+                return
+
+        # 2. Handle Text / CSV files
         try:
             text = file_content.decode("utf-8", errors="ignore")
         except Exception:
@@ -292,26 +337,53 @@ class RAGEngine:
         return True, f"Successfully trained and indexed {total} knowledge blocks!"
 
     def load_trained_engine(self) -> bool:
-        """Load local Pickle + NumPy engine."""
-        if os.path.exists(self.db_path):
+        """Load engine: sync from Qdrant if active."""
+        if self.qdrant_client:
             try:
-                with open(self.db_path, "rb") as f:
-                    data = pickle.load(f)
-                    self.documents = data["docs"]
-                    self.vectors = data["vecs"]
+                collections = [c.name for c in self.qdrant_client.get_collections().collections]
+                loaded_docs = []
+                loaded_vecs = []
+                
+                for col in collections:
+                    # Scroll through all points in this collection
+                    offset = None
+                    while True:
+                        records, offset = self.qdrant_client.scroll(
+                            collection_name=col,
+                            limit=100,
+                            with_payload=True,
+                            with_vectors=True,
+                            offset=offset
+                        )
+                        for r in records:
+                            # Reconstruct doc_data from payload
+                            payload = r.payload or {}
+                            doc_data = {
+                                "id": r.id,
+                                "title": payload.get("title", "Untitled"),
+                                "text": payload.get("text", ""),
+                                "source": payload.get("source") or f"Page {payload.get('metadata', {}).get('page', 'N/A')}",
+                                "collection": col,
+                                "metadata": payload.get("metadata", {})
+                            }
+                            # Avoid duplicates by ID
+                            if not any(d["id"] == r.id for d in loaded_docs):
+                                loaded_docs.append(doc_data)
+                                loaded_vecs.append(r.vector)
+                        if offset is None:
+                            break
+                
+                self.documents = loaded_docs
+                self.vectors = loaded_vecs
+                print(f"[RAGEngine] Successfully synced {len(self.documents)} documents from Qdrant collections.", flush=True)
                 return True
             except Exception as e:
-                print(f"[RAGEngine] Failed to load local engine: {e}", flush=True)
-                return False
+                print(f"[RAGEngine] Failed to sync from Qdrant: {e}.", flush=True)
         return False
 
     def _save_local_db(self):
-        """Save documents and vectors locally as Pickle."""
-        try:
-            with open(self.db_path, "wb") as f:
-                pickle.dump({"docs": self.documents, "vecs": self.vectors}, f)
-        except Exception as e:
-            print(f"[RAGEngine] Failed to save local db: {e}", flush=True)
+        """No-op for Qdrant-only architecture. Preserves old pickle file."""
+        pass
 
     def ingest_chunk(self, collection_name: str, chunk_id: str, text: str, title: str, metadata: dict):
         """Upsert a single document chunk (handles oversized chunks automatically)."""
@@ -333,15 +405,26 @@ class RAGEngine:
             
             embedding = self._safe_get_embedding(p_text)
 
+            doc_data = {
+                "id": p_id,
+                "title": p_title,
+                "text": p_text,
+                "source": p_chunk.get("source") or f"Page {p_chunk['metadata'].get('page', 'N/A')}",
+                "collection": collection_name,
+                "metadata": p_chunk["metadata"]
+            }
+
             if self.qdrant_client:
                 try:
                     point = PointStruct(
                         id=p_id,
                         vector=embedding,
                         payload={
-                            "title": p_title,
-                            "text": p_text,
-                            "metadata": p_chunk["metadata"]
+                            "title": doc_data["title"],
+                            "text": doc_data["text"],
+                            "source": doc_data["source"],
+                            "collection": doc_data["collection"],
+                            "metadata": doc_data["metadata"]
                         }
                     )
                     self.qdrant_client.upsert(collection_name=collection_name, points=[point])
@@ -354,15 +437,6 @@ class RAGEngine:
                 if doc.get("id") == p_id:
                     existing_idx = idx
                     break
-
-            doc_data = {
-                "id": p_id,
-                "title": p_title,
-                "text": p_text,
-                "source": f"Page {p_chunk['metadata'].get('page', 'N/A')}",
-                "collection": collection_name,
-                "metadata": p_chunk["metadata"]
-            }
 
             if existing_idx is not None:
                 self.documents[existing_idx] = doc_data
@@ -386,24 +460,7 @@ class RAGEngine:
         texts = [c["text"] for c in processed_chunks]
         embeddings = self._safe_get_embeddings_batch(texts)
 
-        if self.qdrant_client:
-            try:
-                points = [
-                    PointStruct(
-                        id=chunk["id"],
-                        vector=emb,
-                        payload={
-                            "title": chunk.get("title", "Untitled"),
-                            "text": chunk["text"],
-                            "metadata": chunk.get("metadata", {})
-                        }
-                    )
-                    for chunk, emb in zip(processed_chunks, embeddings)
-                ]
-                self.qdrant_client.upsert(collection_name=collection_name, points=points)
-            except Exception as e:
-                print(f"[RAGEngine] Qdrant batch ingest failed: {e}. Ingesting locally.", flush=True)
-
+        points_to_upsert = []
         # Always save locally
         for chunk, emb in zip(processed_chunks, embeddings):
             chunk_id = chunk["id"]
@@ -417,7 +474,7 @@ class RAGEngine:
                 "id": chunk_id,
                 "title": chunk.get("title", "Untitled"),
                 "text": chunk["text"],
-                "source": f"Page {chunk.get('metadata', {}).get('page', 'N/A')}",
+                "source": chunk.get("source") or f"Page {chunk.get('metadata', {}).get('page', 'N/A')}",
                 "collection": collection_name,
                 "metadata": chunk.get("metadata", {})
             }
@@ -428,7 +485,27 @@ class RAGEngine:
             else:
                 self.documents.append(doc_data)
                 self.vectors.append(emb)
-                
+
+            points_to_upsert.append(
+                PointStruct(
+                    id=chunk_id,
+                    vector=emb,
+                    payload={
+                        "title": doc_data["title"],
+                        "text": doc_data["text"],
+                        "source": doc_data["source"],
+                        "collection": doc_data["collection"],
+                        "metadata": doc_data["metadata"]
+                    }
+                )
+            )
+
+        if self.qdrant_client:
+            try:
+                self.qdrant_client.upsert(collection_name=collection_name, points=points_to_upsert)
+            except Exception as e:
+                print(f"[RAGEngine] Qdrant batch ingest failed: {e}. Ingesting locally.", flush=True)
+
         self._save_local_db()
 
     def search(self, search_text: str, collection_name=None, top_k: int = 3) -> list[dict]:
@@ -464,20 +541,12 @@ class RAGEngine:
                                 "payload": point.payload,
                                 "collection": col
                             })
-                    except Exception as e:
-                        err_msg = str(e)
-                        if "dimension" in err_msg.lower() or "validation" in err_msg.lower():
-                            raise ValueError(
-                                f"Qdrant dimension mismatch for collection '{col}': {e}. "
-                                "Please clear/recreate the collection and re-ingest your documents."
-                            ) from e
+                    except Exception:
                         pass
                 
                 all_points.sort(key=lambda x: x["score"], reverse=True)
                 return all_points[:top_k]
             except Exception as e:
-                if isinstance(e, ValueError):
-                    raise e
                 print(f"[RAGEngine] Qdrant search failed: {e}. Falling back to local search.", flush=True)
 
         # Local fallback
@@ -486,13 +555,6 @@ class RAGEngine:
 
         query_vector = np.array(self._safe_get_embedding(search_text))
         matrix = np.array(self.vectors)
-
-        if len(matrix) > 0 and matrix.shape[1] != query_vector.shape[0]:
-            raise ValueError(
-                f"Embedding dimension mismatch: The query embedding has dimension {query_vector.shape[0]}, "
-                f"but the loaded local database has dimension {matrix.shape[1]}. "
-                "Please clear the database and re-train/re-ingest your documents."
-            )
 
         matrix_norms = np.linalg.norm(matrix, axis=1)
         query_norm = np.linalg.norm(query_vector)
