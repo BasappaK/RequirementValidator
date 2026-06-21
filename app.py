@@ -96,7 +96,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🤖 Active LLM Model")
     st.info(f"**Model:**\n`{st.session_state.llm.model_name}`")
-    st.caption("Powered by NVIDIA NIM Core engine.")
+    st.caption("Powered by Google Gemini engine.")
 
     st.markdown("---")
     st.subheader("📚 Collections & Documents")
@@ -123,7 +123,7 @@ with st.sidebar:
 tab_rag, tab_analysis, tab_chat = st.tabs([
     "📂 RAG Knowledge Engine", 
     "📈 Requirements Quality Analyst", 
-    "💬 Nemotron Core Chat"
+    "💬 Gemini Core Chat"
 ])
 
 with tab_rag:

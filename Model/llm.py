@@ -9,7 +9,7 @@ env_path = Path(".env") if Path(".env").exists() else Path("api_key.env")
 load_dotenv(env_path)
 
 class LLMManager:
-    def __init__(self, model_name="nvidia/llama-3.3-nemotron-super-49b-v1.5"):
+    def __init__(self, model_name="gemini-2.5-flash-lite"):
         # Check Streamlit secrets first, fallback to environment variables
         gemini_api_key = None
         try:
@@ -36,10 +36,6 @@ class LLMManager:
             nvidia_api_key = gemini_api_key
            
         self.client = OpenAI(
-            base_url="https://integrate.api.nvidia.com/v1",
-            api_key=nvidia_api_key
-        )
-        self.fallback_client = OpenAI(
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             api_key=gemini_api_key
         )
@@ -48,7 +44,6 @@ class LLMManager:
             api_key=nvidia_api_key
         )
         self.model_name = model_name
-        self.fallback_model_name = "gemini-1.5-flash"
         self.embedding_model = "nvidia/nv-embedqa-e5-v5"
         self.retries = 3
 
@@ -102,42 +97,21 @@ class LLMManager:
         trimmed_messages = messages[-10:]
         
         def call_and_validate():
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=trimmed_messages,
-                    temperature=0.0,
-                    top_p=0.01,
-                    max_tokens=8192,
-                    stream=stream
-                )
-                if not stream:
-                    if not response or not response.choices:
-                        raise ValueError("LLM returned an empty response (no choices).")
-                    content = response.choices[0].message.content
-                    if content is None or content.strip() == "":
-                        raise ValueError("LLM returned empty or null content.")
-                return response
-            except Exception as nvidia_error:
-                print(f"[LLMManager] Primary NVIDIA call failed: {nvidia_error}. Trying Gemini fallback...", flush=True)
-                try:
-                    response = self.fallback_client.chat.completions.create(
-                        model=self.fallback_model_name,
-                        messages=trimmed_messages,
-                        temperature=0.0,
-                        top_p=0.01,
-                        max_tokens=8192,
-                        stream=stream
-                    )
-                    if not stream:
-                        if not response or not response.choices:
-                            raise ValueError("LLM returned an empty response (no choices).")
-                        content = response.choices[0].message.content
-                        if content is None or content.strip() == "":
-                            raise ValueError("LLM returned empty or null content.")
-                    return response
-                except Exception:
-                    raise nvidia_error
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=trimmed_messages,
+                temperature=0.0,
+                top_p=0.01,
+                max_tokens=8192,
+                stream=stream
+            )
+            if not stream:
+                if not response or not response.choices:
+                    raise ValueError("LLM returned an empty response (no choices).")
+                content = response.choices[0].message.content
+                if content is None or content.strip() == "":
+                    raise ValueError("LLM returned empty or null content.")
+            return response
 
         return self._retry_api_call(call_and_validate)
 
@@ -148,7 +122,7 @@ class LLMManager:
             input=[text],
             model=self.embedding_model,
             encoding_format="float",
-            extra_body={"input_type": "query", "truncate": "NONE"}
+            extra_body={"input_type": "query", "truncate": "END"}
         )
         return response.data[0].embedding
 
@@ -161,7 +135,7 @@ class LLMManager:
             input=texts,
             model=self.embedding_model,
             encoding_format="float",
-            extra_body={"input_type": "passage", "truncate": "NONE"}
+            extra_body={"input_type": "passage", "truncate": "END"}
         )
         # Ensure correct ordering by sorting on the index property
         sorted_data = sorted(response.data, key=lambda x: x.index)
