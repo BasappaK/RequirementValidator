@@ -72,7 +72,7 @@ Executes technical checks, validations, and rewrites.
 ### 2.4. Data & Core AI Layer
 Defines entity models and provides foundational interfaces to the model serving APIs.
 *   **[requirement.py](file:///c:/BK/06_GenAI/RequirementValidator/Model/requirement.py)**: Defines the standard `Requirement` model object. Employs dynamic CSV header detection (e.g. mapping "requirement", "description", or "text" to `content`) to ensure compatibility with standard industry engineering exports (e.g., IBM DOORS, PTC Windchill, Jama).
-*   **[llm.py](file:///c:/BK/06_GenAI/RequirementValidator/Model/llm.py)**: Integrates with Google's Gemini API via OpenAI-compatible endpoints. Standardizes model defaults (`gemini-1.5-flash` and `gemini-embedding-001` embeddings). Incorporates API failure fault-tolerance via a thread-safe backoff retry mechanism.
+*   **[llm.py](file:///c:/BK/06_GenAI/RequirementValidator/Model/llm.py)**: Integrates with Google's Gemini API (for completions) and NVIDIA NIM (for embeddings) via OpenAI-compatible endpoints. Standardizes model defaults (`gemini-1.5-flash` and `nvidia/nv-embedqa-e5-v5` embeddings). Incorporates API failure fault-tolerance via a thread-safe backoff retry mechanism.
 *   **[rag_engine.py](file:///c:/BK/06_GenAI/RequirementValidator/RagEngine/rag_engine.py)**: Drives standard vector collection configuration, payload indexing, batch vectorization, and cosine similarity lookup. Automatically orchestrates a dual-backend system: using a remote **Qdrant DB instance** if env credentials exist, and falling back to a **local pickled NumPy database** (`vector_store.pkl`) otherwise.
 
 ---
@@ -127,9 +127,9 @@ Inside [rag_engine.py](file:///c:/BK/06_GenAI/RequirementValidator/RagEngine/rag
 | Technology Component | Specific Integration / Version | Purpose |
 | :--- | :--- | :--- |
 | **Frontend Framework** | Streamlit | Rapid interactive web dashboard |
-| **LLM Provider** | Google Gemini API (OpenAI SDK Wrapper) | Core AI reasoning, chunk extraction, and rewriting |
+| **LLM Provider** | Google Gemini API & NVIDIA NIM API | Dual-provider: completions via Gemini, embeddings via NVIDIA NIM |
 | **Text Generator Model** | `gemini-1.5-flash` | Requirements auditing and correction reviews |
-| **Embedding Model** | `gemini-embedding-001` (3072-dim) | Semantic retrieval vector builder |
+| **Embedding Model** | `nvidia/nv-embedqa-e5-v5` (1024-dim) | Semantic retrieval vector builder |
 | **Vector Index Server** | Qdrant Client / Local Pickle NumPy fallback | Vector storage, keyword indexing, and cosine search |
 | **Document Parser** | PyMuPDF (`fitz`) | High-speed PDF text parsing |
 | **Concurrency Pool** | Python `ThreadPoolExecutor` | Parallel network calls (speeding up evaluations) |

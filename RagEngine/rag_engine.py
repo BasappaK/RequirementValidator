@@ -25,7 +25,7 @@ class RAGEngine:
         self.db_path = db_path
         self.documents = []  # List of dicts: {"id", "title", "text", "source", "collection", "metadata"}
         self.vectors = []    # List of embedding lists
-        self.embed_dim = 3072  # Size matches gemini-embedding-001 dimension
+        self.embed_dim = 1024  # Size matches nvidia/nv-embedqa-e5-v5 dimension
 
         # Initialize Qdrant Client if variables are set
         qdrant_url = os.environ.get("QDRANT_URL", "").strip()
@@ -79,7 +79,7 @@ class RAGEngine:
                     raise e
         raise Exception("Max retries exceeded for batch embeddings.")
 
-    def _split_oversized_chunk(self, chunk: dict, max_chars: int = 1800) -> list[dict]:
+    def _split_oversized_chunk(self, chunk: dict, max_chars: int = 1200) -> list[dict]:
         """Splits a single chunk into multiple smaller chunks if it exceeds max_chars."""
         text = chunk.get("text", "")
         if len(text) <= max_chars:
