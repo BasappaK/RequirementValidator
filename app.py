@@ -128,6 +128,8 @@ with st.sidebar:
         st.info("No collections found.")
 
 # Application Layout Tabs
+
+
 tab_rag, tab_analysis, tab_chat, tab_sandbox = st.tabs([
     "📂 RAG Knowledge Engine", 
     "📈 Requirements Quality Analyst", 
