@@ -25,7 +25,18 @@ class RAGEngine:
         self.db_path = db_path
         self.documents = []  # List of dicts: {"id", "title", "text", "source", "collection", "metadata"}
         self.vectors = []    # List of embedding lists
-        self.embed_dim = 1024  # Size matches nvidia/nv-embedqa-e5-v5 dimension
+        # --- NEW: Dynamically detect embedding dimension ---
+        print("[RAGEngine] Detecting NVIDIA model embedding dimension...", flush=True)
+        try:
+            # Generate a test embedding to see how big it is
+            dummy_vector = self.llm.get_embedding("test")
+            self.embed_dim = len(dummy_vector)
+            print(f"[RAGEngine] Successfully detected dimension: {self.embed_dim}", flush=True)
+        except Exception as e:
+            # Fallback just in case the API is temporarily unreachable during startup
+            print(f"[RAGEngine] Failed to detect dimension. Defaulting to 1024. Error: {e}", flush=True)
+            self.embed_dim = 1024
+
 
         # Initialize Qdrant Client if variables are set
         qdrant_url = os.environ.get("QDRANT_URL", "").strip()
@@ -387,6 +398,10 @@ class RAGEngine:
 
     def ingest_chunk(self, collection_name: str, chunk_id: str, text: str, title: str, metadata: dict):
         """Upsert a single document chunk (handles oversized chunks automatically)."""
+        if metadata is None:
+            metadata = {}
+        metadata["embedding_model"] = self.llm.embedding_model
+
         # Package into a temporary dictionary to use our splitter
         temp_chunk = {
             "id": chunk_id,
@@ -451,6 +466,12 @@ class RAGEngine:
         """Batch upsert multiple document chunks (handles oversized chunks automatically)."""
         if not chunks:
             return
+
+        # Ensure each chunk's metadata contains the embedding model name
+        for chunk in chunks:
+            if "metadata" not in chunk or chunk["metadata"] is None:
+                chunk["metadata"] = {}
+            chunk["metadata"]["embedding_model"] = self.llm.embedding_model
 
         # Flatten and split any oversized chunks before processing
         processed_chunks = []

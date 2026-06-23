@@ -94,6 +94,12 @@ CSS_STYLES = """
     border: 1px solid rgba(99, 102, 241, 0.25);
 }
 
+.chunk-badge.model {
+    background: rgba(139, 92, 246, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
 .chunk-badge.score {
     background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
     color: #ffffff;
@@ -188,6 +194,13 @@ def render_single_chunk_card(chunk, idx, is_live=False):
     keywords = meta.get("keywords", [])
     status = chunk.get("status", "pending")
     
+    embedding_model = meta.get("embedding_model")
+    if not embedding_model:
+        if "rag" in st.session_state and hasattr(st.session_state.rag, "llm"):
+            embedding_model = st.session_state.rag.llm.embedding_model
+        else:
+            embedding_model = "N/A"
+        
     status_label = "Pending"
     if status == "ingested":
         status_label = "Ingested"
@@ -206,6 +219,7 @@ def render_single_chunk_card(chunk, idx, is_live=False):
             <span class="chunk-badge {status}">{status_label}</span>
             <span class="chunk-badge page">Page {page}</span>
             <span class="chunk-badge type">{item_type}</span>
+            <span class="chunk-badge model">{embedding_model}</span>
             <span class="chunk-badge page">ID: {safe_item_id}</span>
         </div>
         <div class="chunk-body">
@@ -835,10 +849,11 @@ def render_rag_tab():
                             itype = meta.get("item_type", "N/A")
                             iid = meta.get("item_id", "N/A")
                             score = r["score"]
+                            emb_model = meta.get("embedding_model", "N/A")
                             
                             st.markdown(f"""
                             **Match #{rank} (Similarity Score: {score:.4f})**
-                            * **Title:** `{t}` | **Page:** `{p}` | **Type:** `{itype}` | **ID:** `{iid}`
+                            * **Title:** `{t}` | **Page:** `{p}` | **Type:** `{itype}` | **ID:** `{iid}` | **Model:** `{emb_model}`
                             * **Text:** {txt}
                             ---
                             """)

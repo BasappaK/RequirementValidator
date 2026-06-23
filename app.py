@@ -63,11 +63,12 @@ def view_chunks_dialog(collection_name: str):
                 meta = payload.get("metadata", {})
                 itype = meta.get("item_type", "N/A")
                 iid = meta.get("item_id") or "N/A"
+                emb_model = meta.get("embedding_model", "N/A")
                 
                 st.markdown(f"""
                 <div style="background: rgba(30, 41, 59, 0.45); border: 1px solid rgba(255,255,255,0.08); padding: 12px; border-radius: 8px; margin-bottom: 10px;">
                     <div style="font-size: 0.78rem; color: #94a3b8; margin-bottom: 6px;">
-                        <strong>Chunk #{idx}</strong> | ID: <code>{cid}</code> | Type: <code>{itype}</code> | Ref: <code>{iid}</code>
+                        <strong>Chunk #{idx}</strong> | ID: <code>{cid}</code> | Type: <code>{itype}</code> | Model: <code>{emb_model}</code> | Ref: <code>{iid}</code>
                     </div>
                     <details style="cursor: pointer;">
                         <summary style="font-size: 0.95rem; font-weight: 600; color: #60a5fa;">{t}</summary>
